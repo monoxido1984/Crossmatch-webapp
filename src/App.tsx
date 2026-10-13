@@ -14,13 +14,13 @@ import { BatchAnalysis } from './components/BatchAnalysis';
 
 export default function App() {
   const [currentFile, setCurrentFile] = useState<FCSFile>(() => {
-    return CrossmatchDatasetService.createSample('Donor01_PatientSerum_FCXM.fcs', true, 45000);
+    return CrossmatchDatasetService.createSample('Donor01_PatientSerum_FCXM.fcs', true, 12000);
   });
 
-  const [gates, setGates] = useState<Gate[]>(() => CrossmatchDatasetService.getDefaultCrossmatchGates());
+  const [gates, setGates] = useState<Gate[]>([]);
 
-  const [activeGateId, setActiveGateId] = useState<string | null>('gate_cd3_tcells');
-  const [activeTab, setActiveTab] = useState<'explorer' | 'batch' | 'workflow' | 'diagnostics'>('explorer');
+  const [activeGateId, setActiveGateId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'explorer' | 'batch' | 'workflow' | 'diagnostics'>('batch');
 
   const [selectedXParam, setSelectedXParam] = useState<string>('CD3 APC');
   const [selectedYParam, setSelectedYParam] = useState<string>('CD19 PE');

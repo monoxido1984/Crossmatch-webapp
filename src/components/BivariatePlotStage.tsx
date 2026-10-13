@@ -27,6 +27,7 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
   onSelectYParam,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastDragFrameRef = useRef(0);
 
   const [xTransform, setXTransform] = useState<TransformType>('arcsinh');
   const [yTransform, setYTransform] = useState<TransformType>('arcsinh');
@@ -372,7 +373,11 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
 
 
     if (drawMode === 'rectangle' && rectStart) {
-      setRectCurrent(dataPt);
+      const now = performance.now();
+      if (now - lastDragFrameRef.current > 60) {
+        lastDragFrameRef.current = now;
+        setRectCurrent(dataPt);
+      }
     }
   };
 

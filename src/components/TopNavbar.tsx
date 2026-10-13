@@ -65,29 +65,6 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <span>Analizar lote FCS</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('workflow')}
-          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-            activeTab === 'workflow'
-              ? 'bg-slate-100 text-blue-700 font-semibold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <GitBranch className="w-3.5 h-3.5 text-slate-500" />
-          <span>Flujos de Trabajo</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('diagnostics')}
-          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-            activeTab === 'diagnostics'
-              ? 'bg-slate-100 text-blue-700 font-semibold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <Cpu className="w-3.5 h-3.5 text-slate-500" />
-          <span>Auditoría y Motor R</span>
-        </button>
       </nav>
 
       {/* Zone 3: Enterprise Actions & Sample Selector */}
