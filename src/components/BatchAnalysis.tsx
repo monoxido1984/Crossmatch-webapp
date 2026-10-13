@@ -32,6 +32,8 @@ export const BatchAnalysis: React.FC<Props> = ({ onInspect, template }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [useCompensation, setUseCompensation] = useState(true);
   const [useTemplate, setUseTemplate] = useState(false);
+  const [loadedTemplate, setLoadedTemplate] = useState<Gate[] | null>(null);
+  const activeTemplate = loadedTemplate ?? template;
 
 
   const run = async (demo = false) => {
@@ -64,7 +66,7 @@ export const BatchAnalysis: React.FC<Props> = ({ onInspect, template }) => {
             worker.postMessage({
               id, name: entry.name, mode: 'batch', demo: 'demo' in entry ? entry.demo : false,
               demoPositive: 'demoPositive' in entry ? entry.demoPositive : true,
-              buffer, auto: !useTemplate, workflow: useTemplate ? template : undefined,
+              buffer, auto: !useTemplate, workflow: useTemplate ? activeTemplate : undefined,
               compensate: useCompensation,
             }, buffer ? [buffer] : []);
           });
@@ -117,7 +119,7 @@ export const BatchAnalysis: React.FC<Props> = ({ onInspect, template }) => {
       if (response.type !== 'inspect') throw new Error(response.error || 'Error abriendo FCS.');
       const sample = response.file as FCSFile;
       onInspect(sample, useTemplate ? {
-        gates: template, populations: [], warnings: result.warnings || [],
+        gates: activeTemplate, populations: [], warnings: result.warnings || [],
       } : result.analysis || analyzeFCS(sample));
       setProgress('');
     } catch (error) {
@@ -165,9 +167,44 @@ export const BatchAnalysis: React.FC<Props> = ({ onInspect, template }) => {
             Aplicar compensación cuando exista $SPILLOVER válido
           </label>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={useTemplate} onChange={e => setUseTemplate(e.target.checked)} disabled={template.length === 0} />
-            Usar gates del explorador como workflow ({template.length} gates)
+            <input type="checkbox" checked={useTemplate} onChange={e => setUseTemplate(e.target.checked)} disabled={activeTemplate.length === 0} />
+            Usar gates del explorador como workflow ({activeTemplate.length} gates)
           </label>
+          <div className="flex items-center flex-wrap gap-3 text-xs text-slate-600">
+            <label className="cursor-pointer rounded border border-slate-300 bg-white p-2">
+              Importar workflow JSON
+              <input type="file" accept=".json" className="sr-only" onChange={async e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const gates = JSON.parse(await file.text());
+                  if (!Array.isArray(gates) || gates.length === 0 || gates.length > 250 ||
+                      !gates.every((g: any) => typeof g.id === 'string' &&
+                        typeof g.xParam === 'string' && typeof g.yParam === 'string' &&
+                        typeof g.type === 'string' && (g.parentId === null || typeof g.parentId === 'string'))) {
+                    throw new Error('Formato inválido. Se esperaba una lista de gates.');
+                  }
+                  setLoadedTemplate(gates as Gate[]);
+                  setUseTemplate(true);
+                  setProgress('Workflow cargado: ' + gates.length + ' gates');
+                } catch (error) {
+                  setProgress('No se pudo importar workflow: ' + String(error));
+                }
+                e.target.value = '';
+              }} />
+            </label>
+            <button disabled={activeTemplate.length === 0}
+              className="rounded border border-slate-300 bg-white p-2 disabled:opacity-50"
+              onClick={() => {
+                const url = URL.createObjectURL(new Blob([JSON.stringify(activeTemplate, null, 2)], { type: 'application/json' }));
+                const link = document.createElement('a');
+                link.href = url; link.download = 'workflow_gating.json'; link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+              }}>
+              Guardar workflow JSON
+            </button>
+            <span>Se reutilizan las mismas coordenadas de gates sobre los canales de cada muestra. Revisar variaciones instrumentales.</span>
+          </div>
           <div className="flex flex-wrap gap-2">
             <button className="rounded bg-blue-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50" disabled={busy || files.length === 0} onClick={() => void run()}>Analizar lote ({files.length})</button>
             <button className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50" disabled={busy} onClick={() => void run(true)}>Probar con 3 FCS simulados</button>
