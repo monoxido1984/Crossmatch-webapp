@@ -257,7 +257,7 @@ export default function App() {
         )}
 
         {activeTab === 'batch' && (
-          <BatchAnalysis onInspect={(sample, analysis) => {
+          <BatchAnalysis template={gates} onInspect={(sample, analysis) => {
             setCurrentFile(sample);
             setGates(analysis.gates);
             setActiveGateId(null);
