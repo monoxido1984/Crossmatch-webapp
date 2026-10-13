@@ -19,7 +19,7 @@ export default function App() {
   });
 
   const [gates, setGates] = useState<Gate[]>(() => {
-    const saved = StorageService.getSavedGates();
+    const saved = null; // Do not restore gates from a different sample without checking file identity.
     const defaults = CrossmatchDatasetService.getDefaultCrossmatchGates();
     const sampleParams = new Set(['FSC-A', 'FSC-H', 'SSC-A', 'IgG FITC', 'CD19 PE', 'CD45 PerCP', 'CD3 APC']);
     const valid = saved && saved.length > 0 && saved.every((g) =>

@@ -3,7 +3,7 @@ import { FileText, Layers, GitBranch, Cpu, Upload, ShieldCheck, Check } from 'lu
 
 interface TopNavbarProps {
   activeTab: 'explorer' | 'batch' | 'workflow' | 'diagnostics';
-  setActiveTab: (tab: 'explorer' | 'workflow' | 'diagnostics') => void;
+  setActiveTab: (tab: 'explorer' | 'batch' | 'workflow' | 'diagnostics') => void;
   sampleName: string;
   totalEvents: number;
   onOpenSampleManager: () => void;

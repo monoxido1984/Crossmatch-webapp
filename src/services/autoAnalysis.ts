@@ -61,7 +61,7 @@ export function analyzeFCS(file: FCSFile): AutomaticAnalysis {
   const gates: Gate[] = [], populations: PopulationStats[] = [];
   const warnings = ['Gates sugeridos automáticamente: requieren revisión visual. No equivalen a un resultado clínico.'];
   const all = Uint32Array.from({ length: file.metadata.totalEvents }, (_, i) => i);
-  let parent = all, parentId: string | null = null;
+  let parent: Uint32Array = all, parentId: string | null = null;
   const add = (gate: Gate) => {
     const result = CytometryMath.evaluateGate(file, gate, parent);
     gates.push(gate); populations.push(result.stats);
