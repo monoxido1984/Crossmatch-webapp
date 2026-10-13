@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan for CYTOFLOW: browser-based, zero-cost flow cytometry analysis platform. Details the WebR/Wasm scientific validation strategy for flowCore, dual-engine contingency design, FlowJo-inspired interactive gating workspace, React Flow visual workflow canvas, FCXM preloaded clinical panel, and client-side IndexedDB persistence.",
+  "updatedAt": "2026-10-13T18:23:22.688445575Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

@@ -1,0 +1,6 @@
+{
+  "name": "CYTOFLOW - Flow Cytometry Analysis Platform",
+  "description": "Scientific, browser-based flow cytometry analysis platform with FlowJo interactive gating, WebR flowCore engine validation, visual workflows, and FCXM crossmatch reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
