@@ -81,8 +81,8 @@ self.onmessage = (event: MessageEvent<Request>) => {
     }
     if (message.mode === 'inspect') {
       // Move typed-array ownership to the main thread rather than copying event matrices.
-      const transfers: Transferable[] = [file.events.buffer];
-      if (file.compensatedEvents) transfers.push(file.compensatedEvents.buffer);
+      const transfers: Transferable[] = file.events.buffer instanceof ArrayBuffer ? [file.events.buffer] : [];
+      if (file.compensatedEvents?.buffer instanceof ArrayBuffer) transfers.push(file.compensatedEvents.buffer);
       if (file.rawBuffer) transfers.push(file.rawBuffer);
       self.postMessage({ id: message.id, type: 'inspect', file }, transfers);
       return;

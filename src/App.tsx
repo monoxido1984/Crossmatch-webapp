@@ -10,7 +10,6 @@ import { SampleManagerModal } from './components/SampleManagerModal';
 import { FCSFile, Gate, PopulationStats } from './types/cytometry';
 import { CrossmatchDatasetService } from './services/crossmatchDataset';
 import { CytometryMath } from './services/cytometryMath';
-import { StorageService } from './services/storage';
 import { BatchAnalysis } from './components/BatchAnalysis';
 
 export default function App() {
@@ -18,16 +17,7 @@ export default function App() {
     return CrossmatchDatasetService.createSample('Donor01_PatientSerum_FCXM.fcs', true, 45000);
   });
 
-  const [gates, setGates] = useState<Gate[]>(() => {
-    const saved = null; // Do not restore gates from a different sample without checking file identity.
-    const defaults = CrossmatchDatasetService.getDefaultCrossmatchGates();
-    const sampleParams = new Set(['FSC-A', 'FSC-H', 'SSC-A', 'IgG FITC', 'CD19 PE', 'CD45 PerCP', 'CD3 APC']);
-    const valid = saved && saved.length > 0 && saved.every((g) =>
-      sampleParams.has(g.xParam) && sampleParams.has(g.yParam) &&
-      (g.parentId === null || saved.some((parent) => parent.id === g.parentId))
-    );
-    return valid ? saved! : defaults;
-  });
+  const [gates, setGates] = useState<Gate[]>(() => CrossmatchDatasetService.getDefaultCrossmatchGates());
 
   const [activeGateId, setActiveGateId] = useState<string | null>('gate_cd3_tcells');
   const [activeTab, setActiveTab] = useState<'explorer' | 'batch' | 'workflow' | 'diagnostics'>('explorer');
@@ -98,10 +88,6 @@ export default function App() {
 
     return { statsMap: sMap, indicesMap: iMap };
   }, [currentFile, gates]);
-
-  useEffect(() => {
-    StorageService.saveGates(gates);
-  }, [gates]);
 
   useEffect(() => {
     if (activeGateId) {
