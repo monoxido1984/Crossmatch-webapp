@@ -10,20 +10,18 @@ import { SampleManagerModal } from './components/SampleManagerModal';
 import { FCSFile, Gate, PopulationStats } from './types/cytometry';
 import { CrossmatchDatasetService } from './services/crossmatchDataset';
 import { CytometryMath } from './services/cytometryMath';
-import { StorageService } from './services/storage';
+import { BatchAnalysis } from './components/BatchAnalysis';
+import { FCXMExplorer } from './components/FCXMExplorer';
 
 export default function App() {
   const [currentFile, setCurrentFile] = useState<FCSFile>(() => {
-    return CrossmatchDatasetService.createSample('Donor01_PatientSerum_FCXM.fcs', true, 45000);
+    return CrossmatchDatasetService.createSample('Donor01_PatientSerum_FCXM.fcs', true, 12000);
   });
 
-  const [gates, setGates] = useState<Gate[]>(() => {
-    const saved = StorageService.getSavedGates();
-    return saved && saved.length > 0 ? saved : CrossmatchDatasetService.getDefaultCrossmatchGates();
-  });
+  const [gates, setGates] = useState<Gate[]>([]);
 
-  const [activeGateId, setActiveGateId] = useState<string | null>('gate_cd3_tcells');
-  const [activeTab, setActiveTab] = useState<'explorer' | 'workflow' | 'diagnostics'>('explorer');
+  const [activeGateId, setActiveGateId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'explorer' | 'batch' | 'workflow' | 'diagnostics'>('batch');
 
   const [selectedXParam, setSelectedXParam] = useState<string>('CD3 APC');
   const [selectedYParam, setSelectedYParam] = useState<string>('CD19 PE');
@@ -32,23 +30,24 @@ export default function App() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isWebRPoCOpen, setIsWebRPoCOpen] = useState(false);
 
-  const [isCompensated, setIsCompensated] = useState(false);
+  const isCompensated = currentFile.isCompensated;
+  const [processingError, setProcessingError] = useState<string | null>(null);
 
   const handleToggleCompensation = () => {
-    if (!isCompensated) {
-      const compEvents = CytometryMath.applyCompensation(currentFile);
-      setCurrentFile((prev) => ({
-        ...prev,
-        compensatedEvents: compEvents,
-        isCompensated: true,
-      }));
-      setIsCompensated(true);
-    } else {
-      setCurrentFile((prev) => ({
-        ...prev,
-        isCompensated: false,
-      }));
-      setIsCompensated(false);
+    setProcessingError(null);
+    if (currentFile.isCompensated) {
+      setCurrentFile((prev) => ({ ...prev, isCompensated: false, compensatedEvents: undefined }));
+      return;
+    }
+    if (!currentFile.metadata.spillover) {
+      setProcessingError('El archivo no contiene una matriz $SPILLOVER / $SPILL. No se aplicó compensación.');
+      return;
+    }
+    try {
+      const compensatedEvents = CytometryMath.applyCompensation(currentFile);
+      setCurrentFile((prev) => ({ ...prev, compensatedEvents, isCompensated: true }));
+    } catch (error) {
+      setProcessingError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -89,11 +88,7 @@ export default function App() {
     }
 
     return { statsMap: sMap, indicesMap: iMap };
-  }, [currentFile, gates, isCompensated]);
-
-  useEffect(() => {
-    StorageService.saveGates(gates);
-  }, [gates]);
+  }, [currentFile, gates]);
 
   useEffect(() => {
     if (activeGateId) {
@@ -130,6 +125,11 @@ export default function App() {
   };
 
   const handleAutoGateFSC_SSC = () => {
+    if (!currentFile.parameters.some((p) => /FSC-A/i.test(p.name)) ||
+        !currentFile.parameters.some((p) => /SSC-A/i.test(p.name))) {
+      setProcessingError('Para este gate necesitás canales FSC-A y SSC-A.');
+      return;
+    }
     const rootIndices = indicesMap.get('root') || new Uint32Array(0);
     const autoGate = CytometryMath.autoGateFSC_SSC(currentFile, rootIndices);
     setGates((prev) => [...prev, autoGate]);
@@ -137,7 +137,12 @@ export default function App() {
   };
 
   const handleAutoGateSinglets = () => {
-    const parentId = activeGateId || 'gate_cd45_leukocytes';
+    if (!currentFile.parameters.some((p) => /FSC-A/i.test(p.name)) ||
+        !currentFile.parameters.some((p) => /FSC-H/i.test(p.name))) {
+      setProcessingError('Para este gate necesitás canales FSC-A y FSC-H.');
+      return;
+    }
+    const parentId = activeGateId;
     const autoGate = CytometryMath.autoGateSinglets(currentFile, parentId);
     setGates((prev) => [...prev, autoGate]);
     setActiveGateId(autoGate.id);
@@ -194,42 +199,30 @@ export default function App() {
         onToggleCompensation={handleToggleCompensation}
       />
 
+      {processingError && (
+        <div role="alert" className="px-4 py-2 text-xs text-rose-800 bg-rose-50 border-b border-rose-200 flex items-center justify-between">
+          <span>{processingError}</span>
+          <button onClick={() => setProcessingError(null)} aria-label="Cerrar error" className="font-bold px-2">×</button>
+        </div>
+      )}
       <main className="flex-1 flex overflow-hidden relative">
         {activeTab === 'explorer' && (
-          <div className="flex-1 flex h-full w-full overflow-hidden">
-            <GatingHierarchyTree
-              gates={gates}
-              statsMap={statsMap}
-              totalEvents={currentFile.metadata.totalEvents}
-              activeGateId={activeGateId}
-              onSelectGate={(id) => setActiveGateId(id)}
-              onDeleteGate={handleDeleteGate}
-              onAutoGateFSC_SSC={handleAutoGateFSC_SSC}
-              onAutoGateSinglets={handleAutoGateSinglets}
-            />
+          <FCXMExplorer file={currentFile} gates={gates} onGates={(next) => {
+            setGates(next);
+            setActiveGateId(null);
+          }} />
+        )}
 
-            <BivariatePlotStage
-              file={currentFile}
-              activeGateId={activeGateId}
-              gates={gates}
-              parentIndices={parentIndicesForPlot}
-              onAddGate={handleAddGate}
-              selectedXParam={selectedXParam}
-              selectedYParam={selectedYParam}
-              onSelectXParam={(param) => setSelectedXParam(param)}
-              onSelectYParam={(param) => setSelectedYParam(param)}
-            />
-
-            <GateInspectorPanel
-              file={currentFile}
-              activeGate={activeGate}
-              stats={activeStats}
-              onDeleteGate={handleDeleteGate}
-              isCompensated={isCompensated}
-              onToggleCompensation={handleToggleCompensation}
-              onExportCSV={handleExportCSV}
-            />
-          </div>
+        {activeTab === 'batch' && (
+          <BatchAnalysis template={gates} onInspect={(sample, analysis) => {
+            setCurrentFile(sample);
+            setGates(analysis.gates);
+            setActiveGateId(null);
+            setSelectedXParam(sample.parameters[0]?.shortName || sample.parameters[0]?.name || '');
+            setSelectedYParam(sample.parameters[1]?.shortName || sample.parameters[0]?.name || '');
+            setProcessingError(null);
+            setActiveTab('explorer');
+          }} />
         )}
 
         {activeTab === 'workflow' && (
@@ -327,8 +320,15 @@ ff_comp <- compensate(ff, spill)
         onClose={() => setIsSampleManagerOpen(false)}
         currentFile={currentFile}
         onSelectSample={(sample) => {
-          setCurrentFile(sample);
+          setCurrentFile({ ...sample, compensatedEvents: undefined, isCompensated: false });
+          const params = new Set(sample.parameters.flatMap((p) => [p.name, p.stain, p.shortName]));
+          const defaults = CrossmatchDatasetService.getDefaultCrossmatchGates();
+          setGates(sample.panelType === 'FCXM Crossmatch' &&
+            defaults.every((gate) => params.has(gate.xParam) && params.has(gate.yParam)) ? defaults : []);
           setActiveGateId(null);
+          setSelectedXParam(sample.parameters[0]?.shortName || sample.parameters[0]?.name || '');
+          setSelectedYParam(sample.parameters[1]?.shortName || sample.parameters[0]?.name || '');
+          setProcessingError(null);
         }}
       />
 

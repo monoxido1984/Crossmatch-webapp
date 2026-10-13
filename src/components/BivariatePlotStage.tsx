@@ -27,6 +27,7 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
   onSelectYParam,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastDragFrameRef = useRef(0);
 
   const [xTransform, setXTransform] = useState<TransformType>('arcsinh');
   const [yTransform, setYTransform] = useState<TransformType>('arcsinh');
@@ -38,19 +39,22 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
   const [polygonDraft, setPolygonDraft] = useState<Point2D[]>([]);
   const [rectStart, setRectStart] = useState<Point2D | null>(null);
   const [rectCurrent, setRectCurrent] = useState<Point2D | null>(null);
-  const [mouseCoord, setMouseCoord] = useState<Point2D | null>(null);
+
 
   const xParam = file.parameters.find((p) => p.name === selectedXParam || p.shortName === selectedXParam) || file.parameters[0];
   const yParam = file.parameters.find((p) => p.name === selectedYParam || p.shortName === selectedYParam) || file.parameters[1] || file.parameters[0];
 
   useEffect(() => {
-    if (xParam.name.includes('FSC') || xParam.name.includes('SSC')) {
-      setXTransform('linear');
-    }
-    if (yParam.name.includes('FSC') || yParam.name.includes('SSC')) {
-      setYTransform('linear');
-    }
-  }, [selectedXParam, selectedYParam]);
+    setXTransform(/^(FSC|SSC)/i.test(xParam.name) ? 'linear' : 'arcsinh');
+    setYTransform(/^(FSC|SSC)/i.test(yParam.name) ? 'linear' : 'arcsinh');
+  }, [file.id, selectedXParam, selectedYParam]);
+
+  useEffect(() => {
+    setPolygonDraft([]);
+    setRectStart(null);
+    setRectCurrent(null);
+    setDrawMode('view');
+  }, [file.id]);
 
   const xMin = 0;
   const xMax = xParam ? xParam.range : 262144;
@@ -133,7 +137,7 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
       ctx.stroke();
     }
 
-    const eventsData = file.compensatedEvents || file.events;
+    const eventsData = file.isCompensated && file.compensatedEvents ? file.compensatedEvents : file.events;
     const numParams = file.parameters.length;
     const xIdx = xParam.index;
     const yIdx = yParam.index;
@@ -162,8 +166,8 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
       }
     } else {
       // 2D Bivariate Scatter Mode (Standard FlowJo Density on White Paper)
-      const renderCount = Math.min(parentIndices.length, 30000);
-      const step = Math.max(1, Math.floor(parentIndices.length / renderCount));
+      const renderCount = Math.min(parentIndices.length, 10000);
+      const step = Math.max(1, Math.ceil(parentIndices.length / Math.max(1, renderCount)));
 
       for (let i = 0; i < parentIndices.length; i += step) {
         const eIdx = parentIndices[i];
@@ -300,8 +304,8 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
+    const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const sy = (e.clientY - rect.top) * (canvas.height / rect.height);
 
     const dataPt = screenToData(sx, sy, canvas.width, canvas.height);
 
@@ -362,14 +366,18 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
+    const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const sy = (e.clientY - rect.top) * (canvas.height / rect.height);
 
     const dataPt = screenToData(sx, sy, canvas.width, canvas.height);
-    setMouseCoord(dataPt);
+
 
     if (drawMode === 'rectangle' && rectStart) {
-      setRectCurrent(dataPt);
+      const now = performance.now();
+      if (now - lastDragFrameRef.current > 60) {
+        lastDragFrameRef.current = now;
+        setRectCurrent(dataPt);
+      }
     }
   };
 
@@ -574,19 +582,10 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleCanvasMouseMove}
           onMouseUp={handleCanvasMouseUp}
-          className={`rounded border border-slate-300 shadow-sm bg-white ${
+          className={`max-w-full max-h-full rounded border border-slate-300 shadow-sm bg-white ${
             drawMode !== 'view' ? 'cursor-crosshair' : 'cursor-default'
           }`}
         />
-
-        {/* Live Coordinate HUD */}
-        {mouseCoord && (
-          <div className="absolute bottom-6 right-6 px-3 py-1.5 rounded border border-slate-200 bg-white/95 text-xs font-mono text-slate-700 shadow-xs pointer-events-none tabular-nums">
-            <span>X: {Math.round(mouseCoord.x).toLocaleString()}</span>
-            <span className="mx-2 text-slate-300">|</span>
-            <span>Y: {Math.round(mouseCoord.y).toLocaleString()}</span>
-          </div>
-        )}
 
         {/* Drawing Hint Banner */}
         {drawMode === 'polygon' && (

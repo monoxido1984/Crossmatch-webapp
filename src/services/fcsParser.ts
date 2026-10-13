@@ -19,12 +19,20 @@ export class FCSParser {
       throw new Error(`Invalid FCS header signature: "${versionHeader}". Expected FCS2.0, FCS3.0, or FCS3.1.`);
     }
 
+    if (!['FCS2.0', 'FCS3.0', 'FCS3.1'].includes(versionHeader)) {
+      throw new Error(`Versión FCS no compatible: ${versionHeader}`);
+    }
     const version = versionHeader as FCSMetadata['version'];
 
     const textStart = parseInt(decoder.decode(new Uint8Array(buffer, 10, 8)).trim(), 10);
     const textEnd = parseInt(decoder.decode(new Uint8Array(buffer, 18, 8)).trim(), 10);
     let dataStart = parseInt(decoder.decode(new Uint8Array(buffer, 26, 8)).trim(), 10);
     let dataEnd = parseInt(decoder.decode(new Uint8Array(buffer, 34, 8)).trim(), 10);
+
+    if (!Number.isSafeInteger(textStart) || !Number.isSafeInteger(textEnd) ||
+        textStart < 58 || textEnd < textStart || textEnd >= buffer.byteLength) {
+      throw new Error('Segmento TEXT inválido o truncado.');
+    }
 
     // 2. Parse TEXT segment
     const textBytes = new Uint8Array(buffer, textStart, textEnd - textStart + 1);
@@ -37,19 +45,26 @@ export class FCSParser {
     const delimiter = textString[0];
     const textMap: Record<string, string> = {};
 
-    // Split tokens respecting escaped delimiters (two delimiters in a row represents a literal delimiter)
-    const rawTokens = textString.split(delimiter);
-    // Drop first empty token before the first delimiter
-    if (rawTokens.length > 0 && rawTokens[0] === '') {
-      rawTokens.shift();
-    }
-
-    for (let i = 0; i < rawTokens.length - 1; i += 2) {
-      const key = rawTokens[i].trim().toUpperCase();
-      const val = rawTokens[i + 1].trim();
-      if (key) {
-        textMap[key] = val;
+    // Read delimiter-escaped keywords; consecutive delimiters in a value represent a literal delimiter.
+    let pos = 1;
+    while (pos < textString.length) {
+      const keyEnd = textString.indexOf(delimiter, pos);
+      if (keyEnd < 0) break;
+      const key = textString.slice(pos, keyEnd).trim().toUpperCase();
+      pos = keyEnd + 1;
+      let value = '';
+      while (pos < textString.length) {
+        if (textString[pos] !== delimiter) {
+          value += textString[pos++];
+        } else if (textString[pos + 1] === delimiter) {
+          value += delimiter;
+          pos += 2;
+        } else {
+          pos++;
+          break;
+        }
       }
+      if (key) textMap[key] = value.trim();
     }
 
     // FCS 3.0 / 3.1 allows large files where DATA start/end exceed 99,999,999 bytes to specify 0 in header and use $BEGINDATA / $ENDDATA
@@ -70,6 +85,14 @@ export class FCSParser {
       throw new Error(`Invalid event count ($TOT=${totalEvents}) or parameter count ($PAR=${parameterCount}).`);
     }
 
+    if (!Number.isSafeInteger(dataStart) || !Number.isSafeInteger(dataEnd) ||
+        dataStart < 0 || dataEnd < dataStart || dataEnd >= buffer.byteLength) {
+      throw new Error('Segmento DATA inválido o truncado.');
+    }
+    if (!['F', 'D', 'I'].includes(dataType)) {
+      throw new Error(`Tipo $DATATYPE no admitido: ${dataType}`);
+    }
+
     // 3. Extract Parameters Metadata
     const parameters: FCSParameter[] = [];
     for (let p = 1; p <= parameterCount; p++) {
@@ -80,8 +103,8 @@ export class FCSParser {
 
       // Clean short name: preference for stain if available (e.g. "CD3", "CD19"), else channel name
       let shortName = stain.length > 0 ? stain : name;
-      // Strip common prefixes
-      shortName = shortName.replace(/^(FL\d+[-_]?|Comp-)/i, '');
+      // Preserve channel identity for gates and allow instrument-specific stain names.
+      shortName = shortName.trim();
 
       parameters.push({
         index: p - 1,
@@ -100,6 +123,21 @@ export class FCSParser {
     const rawSpill = textMap['$SPILLOVER'] || textMap['$SPILL'];
     if (rawSpill) {
       spillover = this.parseSpilloverString(rawSpill);
+    }
+
+    const bytesPerEvent = parameters.reduce((sum, p) => {
+      if (dataType === 'F' && p.bits !== 32) throw new Error('DATATYPE F requiere parámetros de 32 bits.');
+      if (dataType === 'D' && p.bits !== 64) throw new Error('DATATYPE D requiere parámetros de 64 bits.');
+      if (dataType === 'I' && ![8, 16, 32].includes(p.bits)) {
+        throw new Error(`Ancho entero no admitido: ${p.bits} bits.`);
+      }
+      return sum + p.bits / 8;
+    }, 0);
+    if (totalEvents * parameterCount > 100_000_000) {
+      throw new Error('Archivo demasiado grande para procesarlo de forma segura en este navegador.');
+    }
+    if (totalEvents * bytesPerEvent > dataEnd - dataStart + 1) {
+      throw new Error('El segmento DATA no contiene todos los eventos declarados en $TOT.');
     }
 
     // 5. Read DATA Segment into Float32Array (size: totalEvents * parameterCount)
@@ -132,10 +170,13 @@ export class FCSParser {
       for (let e = 0; e < totalEvents; e++) {
         for (let p = 0; p < parameterCount; p++) {
           const pBits = parameters[p]?.bits || bits;
-          if (pBits <= 16 && offset + 2 <= buffer.byteLength) {
+          if (pBits === 8) {
+            events[e * parameterCount + p] = view.getUint8(offset);
+            offset += 1;
+          } else if (pBits === 16) {
             events[e * parameterCount + p] = view.getUint16(offset, isLittleEndian);
             offset += 2;
-          } else if (offset + 4 <= buffer.byteLength) {
+          } else {
             events[e * parameterCount + p] = view.getUint32(offset, isLittleEndian);
             offset += 4;
           }

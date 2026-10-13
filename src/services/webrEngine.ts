@@ -177,38 +177,13 @@ export class WebREngineService {
     }
     onStepUpdate([...steps]);
 
-    // If flowCore cannot run in WebR, document the technical blocker clearly
     if (!flowCoreLoaded) {
-      const blockerReport = `
-### Technical Audit: WebR Bioconductor flowCore Feasibility
-- **Identified Blocker**: The Bioconductor package \`flowCore\` relies upon \`cytolib\` (RGLab/cytolib), a heavy native C++ library that wraps HDF5 and Boost for high-throughput FCS memory mapping.
-- **Root Cause**: In the standard public WebR wasm distribution, Emscripten shared library dynamic linkage for \`cytolib.so\` requires custom POSIX syscall stubs and static compilation flags not yet packaged in the public \`repo.r-wasm.org\` or \`webr.bioconductor.org/3.20\` WebAssembly index.
-- **Active Fallback Strategy**:
-  1. CYTOFLOW engages its **High-Precision In-Browser Math Engine** (ISAC FCS 3.1 compliant, standard Gaussian elimination spillover inversion, Parks et al. Logicle transforms, ray-casting polygon gating).
-  2. CYTOFLOW provides an **Automated R Script & Plumber Generator**: One-click generation of the identical, reproducible R/flowCore script that runs natively on any R server (Cloud Run / Docker) or desktop R session.
-  3. No simulated or fake data is presented: 100% of event records, spillover matrices, and calculations are computed from real FCS files.
-      `.trim();
-
-      // Mark remaining steps as completed via client scientific engine with clear notice
-      steps[2].status = 'success';
-      steps[2].message = `Read FCS file: ${fcsFile.name} (${fcsFile.metadata.totalEvents.toLocaleString()} events, ${fcsFile.parameters.length} channels). Verified against ISAC binary standard.`;
-      
-      steps[3].status = 'success';
-      steps[3].message = `Extracted 7 parameter vectors and ${fcsFile.metadata.spillover ? '4x4 $SPILLOVER matrix' : 'no spillover'}.`;
-
-      steps[4].status = 'success';
-      steps[4].message = fcsFile.metadata.spillover
-        ? `Applied exact matrix inversion compensation Y = Y * S^-1.`
-        : `No compensation required for this panel.`;
-
-      steps[5].status = 'success';
-      steps[5].message = `Evaluated polygon & threshold gates. Calculated MedFI, Mean, and CV% across 100% of events.`;
-
-      steps[6].status = 'success';
-      steps[6].message = `Rendered ${fcsFile.metadata.totalEvents.toLocaleString()} events at 60 FPS on WebGL scatter stage.`;
-
-      onStepUpdate([...steps]);
-      return { success: false, steps, blockerReport };
+      // Do not report successful execution for steps that were never run in R.
+      return {
+        success: false,
+        steps,
+        blockerReport: `flowCore no pudo cargarse en WebR: ${flowCoreErrorDetails}. El análisis JavaScript es independiente y no se ha validado contra flowCore en esta sesión.`,
+      };
     }
 
     // If flowCore loaded successfully:
@@ -233,21 +208,17 @@ export class WebREngineService {
       return { success: false, steps };
     }
 
-    // --- STEP 4, 5, 6, 7 via flowCore in WebR ---
-    steps[3].status = 'success';
-    steps[3].message = `Extracted event matrix via exprs(ff) and description(ff)$SPILLOVER.`;
-
-    steps[4].status = 'success';
-    steps[4].message = `Executed flowCore::compensate(ff, spill).`;
-
-    steps[5].status = 'success';
-    steps[5].message = `Evaluated polygon gate via flowCore::filter() and flowCore::summary().`;
-
-    steps[6].status = 'success';
-    steps[6].message = `Transferred event matrix to browser WebGL visualization.`;
+    // Remaining steps require explicit R execution and data verification.
+    steps[3].status = 'pending';
+    steps[3].message = 'Extracción R pendiente de implementar.';
+    steps[4].status = 'pending';
+    steps[4].message = 'Compensación en flowCore no ejecutada.';
+    steps[5].status = 'pending';
+    steps[5].message = 'Gating en flowCore no ejecutado.';
+    steps[6].status = 'pending';
+    steps[6].message = 'Transferencia de matrices R→JS no ejecutada.';
     onStepUpdate([...steps]);
-
-    return { success: true, steps };
+    return { success: false, steps, blockerReport: 'La lectura flowCore se realizó; las etapas 4–7 aún no están implementadas.' };
   }
 
   /**

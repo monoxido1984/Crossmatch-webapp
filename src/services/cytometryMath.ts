@@ -84,6 +84,11 @@ export class CytometryMath {
     }
 
     const n = spillover.parameters.length;
+    if (spillover.matrix.length !== n || spillover.matrix.some((row) =>
+      row.length !== n || row.some((value) => !Number.isFinite(value))
+    )) {
+      throw new Error('La matriz $SPILLOVER tiene dimensiones o valores inválidos.');
+    }
     // Map spillover parameters to file parameter indices
     const paramIndices: number[] = [];
     for (const spillParam of spillover.parameters) {
@@ -96,11 +101,14 @@ export class CytometryMath {
       paramIndices.push(idx);
     }
 
+    if (paramIndices.some((idx) => idx < 0) || new Set(paramIndices).size !== n) {
+      throw new Error('No se pueden asociar todos los canales de $SPILLOVER a parámetros únicos del FCS.');
+    }
+
     // Invert the N x N spillover matrix using Gauss-Jordan elimination
     const invMatrix = this.invertMatrix(spillover.matrix);
     if (!invMatrix) {
-      console.warn('Failed to invert spillover matrix (singular). Returning uncompensated events.');
-      return new Float32Array(file.events);
+      throw new Error('La matriz $SPILLOVER es singular; no se aplicó compensación.');
     }
 
     // Create compensated events buffer
@@ -246,7 +254,7 @@ export class CytometryMath {
   ): { indices: Uint32Array; stats: PopulationStats } {
     const numParams = file.parameters.length;
     const totalEvents = file.metadata.totalEvents;
-    const eventsData = file.compensatedEvents || file.events;
+    const eventsData = file.isCompensated && file.compensatedEvents ? file.compensatedEvents : file.events;
 
     // Find channel column indices
     const xParamIdx = file.parameters.findIndex(
@@ -322,8 +330,8 @@ export class CytometryMath {
     // Compute Medians
     valuesX.sort((a, b) => a - b);
     valuesY.sort((a, b) => a - b);
-    const medianX = matchCount > 0 ? valuesX[Math.floor(matchCount / 2)] : 0;
-    const medianY = matchCount > 0 ? valuesY[Math.floor(matchCount / 2)] : 0;
+    const medianX = matchCount > 0 ? (valuesX[Math.floor((matchCount - 1) / 2)] + valuesX[Math.floor(matchCount / 2)]) / 2 : 0;
+    const medianY = matchCount > 0 ? (valuesY[Math.floor((matchCount - 1) / 2)] + valuesY[Math.floor(matchCount / 2)]) / 2 : 0;
 
     // Standard Deviations & CV%
     let varX = 0;
@@ -405,7 +413,7 @@ export class CytometryMath {
   /**
    * Automatic Singlet Doublet-Exclusion Gate (FSC-A vs FSC-H)
    */
-  public static autoGateSinglets(file: FCSFile, parentId: string): Gate {
+  public static autoGateSinglets(file: FCSFile, parentId: string | null): Gate {
     const fscA = file.parameters.find((p) => p.name.includes('FSC-A') || p.shortName === 'FSC-A')?.shortName || 'FSC-A';
     const fscH = file.parameters.find((p) => p.name.includes('FSC-H') || p.shortName === 'FSC-H')?.shortName || 'FSC-H';
 

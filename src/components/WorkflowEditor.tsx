@@ -130,8 +130,8 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ file, gates, onT
       data: {
         label: '4. Gate CD45/SSC',
         sublabel: 'Aislamiento de leucocitos viables',
-        status: 'completed',
-        metrics: 'Rendimiento: ~78.2% eventos',
+        status: 'idle',
+        metrics: 'Pendiente de ejecutar gating',
       },
     },
     {
@@ -141,8 +141,8 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ file, gates, onT
       data: {
         label: '5. Filtro de Singlets',
         sublabel: 'FSC-A vs FSC-H exclusión doublets',
-        status: 'completed',
-        metrics: '94.8% singlets retenidos',
+        status: 'idle',
+        metrics: 'Pendiente de ejecutar gating',
       },
     },
     {
@@ -152,8 +152,8 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ file, gates, onT
       data: {
         label: '6. Inmunofenotipo T/B',
         sublabel: 'CD3-APC vs CD19-PE',
-        status: 'completed',
-        metrics: 'CD3+ (71.4%) · CD19+ (18.2%)',
+        status: 'idle',
+        metrics: 'Pendiente de ejecutar gating',
       },
     },
     {
@@ -163,8 +163,8 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ file, gates, onT
       data: {
         label: '7. Shift FCXM IgG',
         sublabel: 'Cálculo de ΔMCF crossmatch',
-        status: 'completed',
-        metrics: 'T: +1.240 · B: +2.810 (Positivo)',
+        status: 'idle',
+        metrics: 'Requiere control negativo pareado',
       },
     },
     {
@@ -174,8 +174,8 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ file, gates, onT
       data: {
         label: '8. Emisión de Reporte',
         sublabel: 'Generación de informe clínico PDF',
-        status: 'completed',
-        metrics: 'Formato ISAC estándar',
+        status: 'idle',
+        metrics: 'Disponible en Emitir Reporte',
       },
     },
   ];
@@ -197,17 +197,16 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ file, gates, onT
   const onEdgesChange = useCallback((changes: any) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
   const onConnect = useCallback((connection: any) => setEdges((eds) => addEdge(connection, eds)), []);
 
-  const handleRunWorkflow = async () => {
-    setIsRunning(true);
-    for (let i = 0; i < nodes.length; i++) {
-      setNodes((prev) =>
-        prev.map((n, idx) => (idx === i ? { ...n, data: { ...n.data, status: 'running' } } : n))
-      );
-      await new Promise((r) => setTimeout(r, 350));
-      setNodes((prev) =>
-        prev.map((n, idx) => (idx === i ? { ...n, data: { ...n.data, status: 'completed' } } : n))
-      );
-    }
+  const handleRunWorkflow = () => {
+    // Only mark steps that actually happened. Do not animate fictional analyses.
+    setNodes((prev) => prev.map((node) => {
+      if (node.id === 'node-1') return { ...node, data: { ...node.data, status: 'completed' } };
+      if (node.id === 'node-2') return { ...node, data: { ...node.data, status: file.isCompensated ? 'completed' : 'idle' } };
+      if (node.id === 'node-4' && gates.length > 0) {
+        return { ...node, data: { ...node.data, status: 'idle', metrics: 'Explorar gates en la pestaña de gating' } };
+      }
+      return { ...node, data: { ...node.data, status: 'idle' } };
+    }));
     setIsRunning(false);
   };
 
@@ -219,7 +218,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ file, gates, onT
           <span className="font-semibold text-slate-700">Flujo de Trabajo:</span>
           <span className="text-slate-900 font-medium">Estandarización de Crossmatch FCXM</span>
           <span className="text-slate-400">·</span>
-          <span className="text-slate-500 text-[11px]">8 nodos en ejecución secuencial</span>
+          <span className="text-slate-500 text-[11px]">Diagrama de referencia: sin automatización clínica</span>
         </div>
 
         <button
@@ -228,7 +227,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ file, gates, onT
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors shadow-2xs"
         >
           <Play className={`w-3 h-3 ${isRunning ? 'animate-spin' : ''}`} />
-          <span>{isRunning ? 'Ejecutando...' : 'Ejecutar Flujo'}</span>
+          <span>{isRunning ? 'Ejecutando...' : 'Actualizar Estados'}</span>
         </button>
       </div>
 
@@ -267,7 +266,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ file, gates, onT
             <div className="p-2.5 rounded bg-slate-50 border border-slate-200 text-[11px] space-y-1 text-slate-700 font-mono">
               <div>Estado: {(selectedNode.data as any).status}</div>
               <div>Entorno: WebAssembly / Web Worker Local</div>
-              <div>Compatible con flowCore: Sí</div>
+              <div>flowCore: no verificado en este workflow</div>
             </div>
           </div>
         )}
