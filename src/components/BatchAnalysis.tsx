@@ -65,7 +65,7 @@ export const BatchAnalysis: React.FC<Props> = ({ onInspect }) => {
         const analyzed = analyzeOne(sample);
         results.push(analyzed.result);
         // Retain only the most recently analyzed sample for inspection, avoiding batch-sized RAM growth.
-        nextFiles.clear();
+        if (!demo) nextFiles.clear();
         nextFiles.set(sample.id, analyzed.sample);
       } catch (error) {
         results.push({
