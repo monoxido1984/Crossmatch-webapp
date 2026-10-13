@@ -11,6 +11,7 @@ import { FCSFile, Gate, PopulationStats } from './types/cytometry';
 import { CrossmatchDatasetService } from './services/crossmatchDataset';
 import { CytometryMath } from './services/cytometryMath';
 import { BatchAnalysis } from './components/BatchAnalysis';
+import { FCXMExplorer } from './components/FCXMExplorer';
 
 export default function App() {
   const [currentFile, setCurrentFile] = useState<FCSFile>(() => {
@@ -206,40 +207,10 @@ export default function App() {
       )}
       <main className="flex-1 flex overflow-hidden relative">
         {activeTab === 'explorer' && (
-          <div className="flex-1 flex h-full w-full overflow-hidden">
-            <GatingHierarchyTree
-              gates={gates}
-              statsMap={statsMap}
-              totalEvents={currentFile.metadata.totalEvents}
-              activeGateId={activeGateId}
-              onSelectGate={(id) => setActiveGateId(id)}
-              onDeleteGate={handleDeleteGate}
-              onAutoGateFSC_SSC={handleAutoGateFSC_SSC}
-              onAutoGateSinglets={handleAutoGateSinglets}
-            />
-
-            <BivariatePlotStage
-              file={currentFile}
-              activeGateId={activeGateId}
-              gates={gates}
-              parentIndices={parentIndicesForPlot}
-              onAddGate={handleAddGate}
-              selectedXParam={selectedXParam}
-              selectedYParam={selectedYParam}
-              onSelectXParam={(param) => setSelectedXParam(param)}
-              onSelectYParam={(param) => setSelectedYParam(param)}
-            />
-
-            <GateInspectorPanel
-              file={currentFile}
-              activeGate={activeGate}
-              stats={activeStats}
-              onDeleteGate={handleDeleteGate}
-              isCompensated={isCompensated}
-              onToggleCompensation={handleToggleCompensation}
-              onExportCSV={handleExportCSV}
-            />
-          </div>
+          <FCXMExplorer file={currentFile} gates={gates} onGates={(next) => {
+            setGates(next);
+            setActiveGateId(null);
+          }} />
         )}
 
         {activeTab === 'batch' && (
