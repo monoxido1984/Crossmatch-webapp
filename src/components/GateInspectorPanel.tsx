@@ -1,5 +1,5 @@
 import React from 'react';
-import { SlidersHorizontal, Trash2, FileSpreadsheet, CheckCircle, AlertTriangle } from 'lucide-react';
+import { SlidersHorizontal, Trash2, FileSpreadsheet } from 'lucide-react';
 import { FCSFile, Gate, PopulationStats } from '../types/cytometry';
 
 interface GateInspectorPanelProps {
@@ -23,23 +23,8 @@ export const GateInspectorPanel: React.FC<GateInspectorPanelProps> = ({
 }) => {
   const spillover = file.metadata.spillover;
 
-  const isCrossmatchPanel = file.panelType === 'FCXM Crossmatch';
-  const hasIggParam =
-    activeGate &&
-    (activeGate.xParam.toUpperCase().includes('IGG') ||
-      activeGate.xParam.toUpperCase().includes('FITC') ||
-      activeGate.name.toUpperCase().includes('IGG'));
-
-  const mcf = stats?.medianX ?? 0;
-  const negativeControlMcf = 400;
-  const channelShift = hasIggParam ? mcf - negativeControlMcf : null;
-
-  let crossmatchVerdict: 'negative' | 'borderline' | 'positive' | null = null;
-  if (channelShift !== null) {
-    if (channelShift < 250) crossmatchVerdict = 'negative';
-    else if (channelShift < 500) crossmatchVerdict = 'borderline';
-    else crossmatchVerdict = 'positive';
-  }
+  // A crossmatch verdict requires a matched negative control and locally validated cutoffs.
+  // Never infer DSA status or compatibility from an arbitrary MFI constant.
 
   return (
     <aside className="w-80 bg-white border-l border-slate-200 flex flex-col h-full select-none shrink-0 overflow-y-auto">
@@ -144,57 +129,10 @@ export const GateInspectorPanel: React.FC<GateInspectorPanelProps> = ({
           </div>
         )}
 
-        {/* FCXM Crossmatch Clinical Card */}
-        {isCrossmatchPanel && channelShift !== null && (
-          <div className="space-y-1.5">
-            <div className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider">
-              Evaluación de Crossmatch (FCXM)
-            </div>
-            <div
-              className={`p-3 rounded border text-xs space-y-2 ${
-                crossmatchVerdict === 'positive'
-                  ? 'bg-rose-50 border-rose-200 text-rose-900'
-                  : crossmatchVerdict === 'borderline'
-                  ? 'bg-amber-50 border-amber-200 text-amber-900'
-                  : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-              }`}
-            >
-              <div className="flex items-center gap-1.5 font-bold">
-                {crossmatchVerdict === 'positive' ? (
-                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                ) : (
-                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                )}
-                <span>
-                  {crossmatchVerdict === 'positive'
-                    ? 'CROSSMATCH POSITIVO (DSA DETECTADO)'
-                    : crossmatchVerdict === 'borderline'
-                    ? 'CROSSMATCH LIMÍTROFE'
-                    : 'CROSSMATCH NEGATIVO (COMPATIBLE)'}
-                </span>
-              </div>
-
-              <div className="space-y-1 font-mono text-[11px] tabular-nums pt-1 border-t border-current/20">
-                <div className="flex justify-between">
-                  <span>Mediana de Muestra (MCF):</span>
-                  <span className="font-semibold">{Math.round(mcf).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-slate-600">
-                  <span>Control Negativo (MCF):</span>
-                  <span>{negativeControlMcf}</span>
-                </div>
-                <div className="flex justify-between font-bold pt-0.5">
-                  <span>Desplazamiento (ΔMCF):</span>
-                  <span>+{Math.round(channelShift).toLocaleString()}</span>
-                </div>
-              </div>
-
-              <p className="text-[11px] font-sans leading-relaxed text-slate-700 pt-1">
-                {crossmatchVerdict === 'positive'
-                  ? 'Presencia significativa de anticuerpos IgG específicos contra células del donante.'
-                  : 'Sin desplazamiento significativo respecto al suero basal de referencia.'}
-              </p>
-            </div>
+        {file.panelType === 'FCXM Crossmatch' && (
+          <div className="rounded border border-amber-200 bg-amber-50 p-3 text-amber-900 text-[11px] leading-relaxed">
+            <strong>FCXM exploratorio:</strong> no se calcula ΔMCF ni se emite un resultado positivo/negativo
+            hasta incorporar un control negativo pareado y puntos de corte validados por laboratorio.
           </div>
         )}
 

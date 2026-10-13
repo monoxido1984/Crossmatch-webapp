@@ -19,7 +19,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
   statsMap,
 }) => {
   const [reportTitle, setReportTitle] = useState('Reporte Clínico de Crossmatch por Citometría de Flujo');
-  const [operatorName, setOperatorName] = useState(file.metadata.operator || 'Dr. Alex Rivera · Laboratorio de Histocompatibilidad');
+  const [operatorName, setOperatorName] = useState(file.metadata.operator || 'Operador no informado');
   const [clinicalNotes, setClinicalNotes] = useState(
     'Muestra de PBMC de donante incubada con suero de receptor. Evaluación de unión de IgG sobre linfocitos T (CD3+) y B (CD19+) contrastada con suero control negativo.'
   );
@@ -111,14 +111,14 @@ export const ReportModal: React.FC<ReportModalProps> = ({
     rowY += 6;
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text('Interpretación de Crossmatch (FCXM)', 14, rowY);
+    doc.text('Observaciones (análisis exploratorio)', 14, rowY);
     doc.line(14, rowY + 2, 196, rowY + 2);
 
     rowY += 8;
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
     doc.text(
-      'Evaluación de compatibilidad donante-receptor. Detección de anticuerpos donante-específicos (IgG-FITC) sobre poblaciones linfocitarias T y B.',
+      'Sin resultado clínico de FCXM: se requiere control negativo pareado y puntos de corte validados.',
       14,
       rowY,
       { maxWidth: 182 }
@@ -130,7 +130,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      'Generado por Plataforma CYTOFLOW · Sistema LIS de Citometría · Certificación Algorítmica flowCore',
+      'CYTOFLOW - Informe exploratorio, no validado para decisiones clínicas',
       14,
       285
     );
