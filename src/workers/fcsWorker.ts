@@ -87,12 +87,14 @@ self.onmessage = (event: MessageEvent<Request>) => {
       self.postMessage({ id: message.id, type: 'inspect', file }, transfers);
       return;
     }
-    const workflow = message.auto ? analyzeFCS(file).gates : (message.workflow ?? []);
+    const analysis = message.auto ? analyzeFCS(file) : undefined;
+    const workflow = analysis ? analysis.gates : (message.workflow ?? []);
     if (workflow.length === 0) warnings.push('Ningún gate definido: solo se informa el total de eventos.');
     const gates = evaluate(file, workflow, warnings);
     const result: BatchResponse = { id: message.id, name: message.name, events: file.metadata.totalEvents,
-      channels: file.parameters.length, compensated: file.isCompensated, gates, warnings };
-    self.postMessage({ id: message.id, type: 'batch', result });
+      channels: file.parameters.length, compensated: file.isCompensated, gates,
+      warnings: [...warnings, ...(analysis?.warnings ?? [])] };
+    self.postMessage({ id: message.id, type: 'batch', result, analysis });
   } catch (error) {
     self.postMessage({ id: message.id, type: 'error', error: error instanceof Error ? error.message : String(error) });
   }
