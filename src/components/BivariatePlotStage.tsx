@@ -44,13 +44,16 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
   const yParam = file.parameters.find((p) => p.name === selectedYParam || p.shortName === selectedYParam) || file.parameters[1] || file.parameters[0];
 
   useEffect(() => {
-    if (xParam.name.includes('FSC') || xParam.name.includes('SSC')) {
-      setXTransform('linear');
-    }
-    if (yParam.name.includes('FSC') || yParam.name.includes('SSC')) {
-      setYTransform('linear');
-    }
-  }, [selectedXParam, selectedYParam]);
+    setXTransform(/^(FSC|SSC)/i.test(xParam.name) ? 'linear' : 'arcsinh');
+    setYTransform(/^(FSC|SSC)/i.test(yParam.name) ? 'linear' : 'arcsinh');
+  }, [file.id, selectedXParam, selectedYParam]);
+
+  useEffect(() => {
+    setPolygonDraft([]);
+    setRectStart(null);
+    setRectCurrent(null);
+    setDrawMode('view');
+  }, [file.id]);
 
   const xMin = 0;
   const xMax = xParam ? xParam.range : 262144;
@@ -133,7 +136,7 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
       ctx.stroke();
     }
 
-    const eventsData = file.compensatedEvents || file.events;
+    const eventsData = file.isCompensated && file.compensatedEvents ? file.compensatedEvents : file.events;
     const numParams = file.parameters.length;
     const xIdx = xParam.index;
     const yIdx = yParam.index;
@@ -163,7 +166,7 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
     } else {
       // 2D Bivariate Scatter Mode (Standard FlowJo Density on White Paper)
       const renderCount = Math.min(parentIndices.length, 30000);
-      const step = Math.max(1, Math.floor(parentIndices.length / renderCount));
+      const step = Math.max(1, Math.ceil(parentIndices.length / Math.max(1, renderCount)));
 
       for (let i = 0; i < parentIndices.length; i += step) {
         const eIdx = parentIndices[i];
@@ -300,8 +303,8 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
+    const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const sy = (e.clientY - rect.top) * (canvas.height / rect.height);
 
     const dataPt = screenToData(sx, sy, canvas.width, canvas.height);
 
@@ -362,8 +365,8 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
+    const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const sy = (e.clientY - rect.top) * (canvas.height / rect.height);
 
     const dataPt = screenToData(sx, sy, canvas.width, canvas.height);
     setMouseCoord(dataPt);
@@ -574,7 +577,7 @@ export const BivariatePlotStage: React.FC<BivariatePlotStageProps> = ({
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleCanvasMouseMove}
           onMouseUp={handleCanvasMouseUp}
-          className={`rounded border border-slate-300 shadow-sm bg-white ${
+          className={`max-w-full max-h-full rounded border border-slate-300 shadow-sm bg-white ${
             drawMode !== 'view' ? 'cursor-crosshair' : 'cursor-default'
           }`}
         />

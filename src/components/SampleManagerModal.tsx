@@ -22,23 +22,25 @@ export const SampleManagerModal: React.FC<SampleManagerModalProps> = ({
 
   if (!isOpen) return null;
 
+  const loadFile = async (file: File) => {
+    setErrorMsg(null);
+    if (!file.name.toLowerCase().endsWith('.fcs')) {
+      setErrorMsg('Seleccioná un archivo con extensión .fcs.');
+      return;
+    }
+    try {
+      const parsed = FCSParser.parse(await file.arrayBuffer(), file.name);
+      onSelectSample(parsed);
+      onClose();
+    } catch (error) {
+      setErrorMsg(`Error al procesar archivo FCS: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    setErrorMsg(null);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const buffer = event.target?.result as ArrayBuffer;
-        const parsed = FCSParser.parse(buffer, file.name);
-        onSelectSample(parsed);
-        onClose();
-      } catch (err: any) {
-        setErrorMsg(`Error al procesar archivo FCS: ${err.message || String(err)}`);
-      }
-    };
-    reader.readAsArrayBuffer(file);
+    if (file) void loadFile(file);
+    e.target.value = '';
   };
 
   const handleLoadPreset = (type: 'positive-fcxm' | 'negative-fcxm') => {
@@ -81,6 +83,12 @@ export const SampleManagerModal: React.FC<SampleManagerModalProps> = ({
           {/* Drag & Drop Upload */}
           <div
             onClick={() => fileInputRef.current?.click()}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const file = event.dataTransfer.files?.[0];
+              if (file) void loadFile(file);
+            }}
             className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-slate-50 hover:bg-slate-100"
           >
             <input
@@ -110,7 +118,7 @@ export const SampleManagerModal: React.FC<SampleManagerModalProps> = ({
           {/* Benchmark Presets */}
           <div className="space-y-2">
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-600">
-              Muestras Clínicas de Demostración
+              Muestras Sintéticas de Demostración (no clínicas)
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div
@@ -122,7 +130,7 @@ export const SampleManagerModal: React.FC<SampleManagerModalProps> = ({
                     Donor01_PatientSerum.fcs
                   </span>
                   <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
-                    DSA Positivo
+                    Simulación +
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-600 leading-tight">
@@ -139,7 +147,7 @@ export const SampleManagerModal: React.FC<SampleManagerModalProps> = ({
                     Donor01_NegControl.fcs
                   </span>
                   <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Control Negativo
+                    Simulación −
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-600 leading-tight">
@@ -157,7 +165,7 @@ export const SampleManagerModal: React.FC<SampleManagerModalProps> = ({
             <div className="p-3 rounded border border-slate-200 bg-slate-50 text-xs space-y-1.5 text-slate-700">
               <div className="flex justify-between">
                 <span className="text-slate-500 font-medium">Instrumento Citómetro:</span>
-                <span className="font-semibold text-slate-900">{currentFile.metadata.cytometer || 'BD FACSCanto II'}</span>
+                <span className="font-semibold text-slate-900">{currentFile.metadata.cytometer || 'No informado'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500 font-medium">Formato de Archivo:</span>
