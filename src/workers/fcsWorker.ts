@@ -84,7 +84,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
       const transfers: Transferable[] = file.events.buffer instanceof ArrayBuffer ? [file.events.buffer] : [];
       if (file.compensatedEvents?.buffer instanceof ArrayBuffer) transfers.push(file.compensatedEvents.buffer);
       if (file.rawBuffer) transfers.push(file.rawBuffer);
-      self.postMessage({ id: message.id, type: 'inspect', file }, transfers);
+      self.postMessage({ id: message.id, type: 'inspect', file }, { transfer: transfers });
       return;
     }
     const analysis = message.auto ? analyzeFCS(file) : undefined;
