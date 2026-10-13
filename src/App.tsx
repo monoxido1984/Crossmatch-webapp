@@ -11,6 +11,7 @@ import { FCSFile, Gate, PopulationStats } from './types/cytometry';
 import { CrossmatchDatasetService } from './services/crossmatchDataset';
 import { CytometryMath } from './services/cytometryMath';
 import { StorageService } from './services/storage';
+import { BatchAnalysis } from './components/BatchAnalysis';
 
 export default function App() {
   const [currentFile, setCurrentFile] = useState<FCSFile>(() => {
@@ -29,7 +30,7 @@ export default function App() {
   });
 
   const [activeGateId, setActiveGateId] = useState<string | null>('gate_cd3_tcells');
-  const [activeTab, setActiveTab] = useState<'explorer' | 'workflow' | 'diagnostics'>('explorer');
+  const [activeTab, setActiveTab] = useState<'explorer' | 'batch' | 'workflow' | 'diagnostics'>('explorer');
 
   const [selectedXParam, setSelectedXParam] = useState<string>('CD3 APC');
   const [selectedYParam, setSelectedYParam] = useState<string>('CD19 PE');
@@ -253,6 +254,18 @@ export default function App() {
               onExportCSV={handleExportCSV}
             />
           </div>
+        )}
+
+        {activeTab === 'batch' && (
+          <BatchAnalysis onInspect={(sample, analysis) => {
+            setCurrentFile(sample);
+            setGates(analysis.gates);
+            setActiveGateId(null);
+            setSelectedXParam(sample.parameters[0]?.shortName || sample.parameters[0]?.name || '');
+            setSelectedYParam(sample.parameters[1]?.shortName || sample.parameters[0]?.name || '');
+            setProcessingError(null);
+            setActiveTab('explorer');
+          }} />
         )}
 
         {activeTab === 'workflow' && (
