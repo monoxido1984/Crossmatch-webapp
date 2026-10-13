@@ -1,9 +1,6 @@
 import React, { useRef, useState } from 'react';
-import type { FCSFile } from '../types/cytometry';
-import { FCSParser } from '../services/fcsParser';
-import { CytometryMath } from '../services/cytometryMath';
+import type { FCSFile, Gate } from '../types/cytometry';
 import { analyzeFCS, type AutomaticAnalysis } from '../services/autoAnalysis';
-import { CrossmatchDatasetService } from '../services/crossmatchDataset';
 
 export interface BatchResult {
   id: string;
@@ -13,103 +10,140 @@ export interface BatchResult {
   channels: number;
   compensated: boolean;
   analysis?: AutomaticAnalysis;
+  gateSummaries?: { id: string; name: string; count: number; percentOfParent: number; medianX: number; medianY: number }[];
+  warnings?: string[];
   error?: string;
 }
 
 interface Props {
   onInspect: (file: FCSFile, analysis: AutomaticAnalysis) => void;
+  template: Gate[];
 }
 
 function csvCell(value: string | number | undefined): string {
   return '"' + String(value ?? '').replace(/"/g, '""') + '"';
 }
 
-export const BatchAnalysis: React.FC<Props> = ({ onInspect }) => {
+export const BatchAnalysis: React.FC<Props> = ({ onInspect, template }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<BatchResult[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [useCompensation, setUseCompensation] = useState(true);
-  const [savedFiles, setSavedFiles] = useState<Map<string, FCSFile>>(new Map());
+  const [useTemplate, setUseTemplate] = useState(false);
 
-  const analyzeOne = (file: FCSFile): { result: BatchResult; sample: FCSFile } => {
-    let sample = file;
-    if (useCompensation && file.metadata.spillover) {
-      const compensatedEvents = CytometryMath.applyCompensation(file);
-      sample = { ...file, compensatedEvents, isCompensated: true };
-    }
-    const analysis = analyzeFCS(sample);
-    return { sample, result: {
-      id: file.id, filename: file.name, status: 'ok',
-      events: file.metadata.totalEvents, channels: file.parameters.length,
-      compensated: sample.isCompensated, analysis,
-    } };
-  };
 
   const run = async (demo = false) => {
     if (busy) return;
     setBusy(true); setItems([]); setProgress('');
-    const nextFiles = new Map<string, FCSFile>();
     const results: BatchResult[] = [];
-    const count = demo ? 3 : files.length;
-    for (let i = 0; i < count; i++) {
-      const filename = demo ? ['Demo_FCXM_positivo.fcs', 'Demo_Control_negativo.fcs', 'Demo_FCXM_replicado.fcs'][i] : files[i].name;
-      setProgress(`Procesando ${i + 1}/${count}: ${filename}`);
-      // Allow browser to repaint and keep progress visible.
-      await new Promise<void>(resolve => setTimeout(resolve, 0));
-      try {
-        const sample = demo
-          ? CrossmatchDatasetService.createSample(filename, i !== 1, 12000)
-          : FCSParser.parse(await files[i].arrayBuffer(), filename);
-        const analyzed = analyzeOne(sample);
-        results.push(analyzed.result);
-        // Retain only the most recently analyzed sample for inspection, avoiding batch-sized RAM growth.
-        if (!demo) nextFiles.clear();
-        nextFiles.set(sample.id, analyzed.sample);
-      } catch (error) {
-        results.push({
-          id: `error_${i}`, filename, status: 'error', events: 0, channels: 0,
-          compensated: false, error: error instanceof Error ? error.message : String(error),
-        });
+    const inputs = demo
+      ? ['Demo_FCXM_positivo.fcs', 'Demo_Control_negativo.fcs', 'Demo_FCXM_replicado.fcs'].map((name, i) => ({ name, demo: true, demoPositive: i !== 1 }))
+      : files.map(file => ({ name: file.name, file }));
+    // All CPU-heavy parsing and analysis happens in a worker, not on the UI thread.
+    const worker = new Worker(new URL('../workers/fcsWorker.ts', import.meta.url), { type: 'module' });
+    try {
+      for (let i = 0; i < inputs.length; i++) {
+        const entry = inputs[i];
+        setProgress('Procesando ' + (i + 1) + '/' + inputs.length + ': ' + entry.name);
+        try {
+          const id = 'batch_' + i;
+          const buffer = 'file' in entry && entry.file ? await entry.file.arrayBuffer() : undefined;
+          const response = await new Promise<any>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Tiempo máximo excedido procesando FCS')), 120000);
+            worker.onmessage = e => {
+              if (e.data.id !== id) return;
+              clearTimeout(timeout);
+              resolve(e.data);
+            };
+            worker.onerror = e => {
+              clearTimeout(timeout);
+              reject(new Error(e.message || 'Error del motor FCS'));
+            };
+            worker.postMessage({
+              id, name: entry.name, mode: 'batch', demo: 'demo' in entry ? entry.demo : false,
+              demoPositive: 'demoPositive' in entry ? entry.demoPositive : true,
+              buffer, auto: !useTemplate, workflow: useTemplate ? template : undefined,
+              compensate: useCompensation,
+            }, buffer ? [buffer] : []);
+          });
+          if (response.type === 'error') throw new Error(response.error);
+          results.push({
+            id, filename: entry.name, status: 'ok', events: response.result.events,
+            channels: response.result.channels, compensated: response.result.compensated,
+            analysis: response.analysis,
+            gateSummaries: response.result.gates,
+            warnings: response.result.warnings,
+          });
+        } catch (error) {
+          results.push({
+            id: 'error_' + i, filename: entry.name, status: 'error', events: 0,
+            channels: 0, compensated: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        setItems([...results]);
       }
-      setItems([...results]);
+      setProgress('Finalizado: ' + results.filter(r => r.status === 'ok').length + '/' + inputs.length + ' archivos.');
+    } finally {
+      worker.terminate();
+      setBusy(false);
     }
-    setSavedFiles(nextFiles);
-    setProgress(`Finalizado: ${results.filter(r => r.status === 'ok').length}/${count} procesados`);
-    setBusy(false);
   };
 
   const inspect = async (result: BatchResult) => {
-    if (!result.analysis || result.status !== 'ok') return;
-    // For real files re-read from the File to avoid retaining every event matrix in RAM.
-    let sample = savedFiles.get(result.id);
-    if (!sample) {
+    if (result.status !== 'ok') return;
+    setProgress('Abriendo ' + result.filename + '...');
+    const worker = new Worker(new URL('../workers/fcsWorker.ts', import.meta.url), { type: 'module' });
+    try {
       const original = files.find(f => f.name === result.filename);
-      if (!original) return;
-      try {
-        sample = FCSParser.parse(await original.arrayBuffer(), original.name);
-        if (result.compensated && sample.metadata.spillover) {
-          sample = { ...sample, isCompensated: true, compensatedEvents: CytometryMath.applyCompensation(sample) };
-        }
-      } catch (err) {
-        setProgress(`No se pudo abrir ${result.filename}: ${err instanceof Error ? err.message : String(err)}`);
-        return;
-      }
+      const isDemo = result.filename.startsWith('Demo_');
+      const buffer = !isDemo && original ? await original.arrayBuffer() : undefined;
+      if (!isDemo && !buffer) throw new Error('No se encuentra el archivo original.');
+      const response = await new Promise<any>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Tiempo de apertura excedido')), 120000);
+        worker.onmessage = event => {
+          clearTimeout(timeout);
+          resolve(event.data);
+        };
+        worker.onerror = event => { clearTimeout(timeout); reject(new Error(event.message)); };
+        worker.postMessage({
+          id: 'inspect', name: result.filename, mode: 'inspect', buffer,
+          demo: isDemo, demoPositive: !result.filename.includes('negativo'),
+          compensate: result.compensated,
+        }, buffer ? [buffer] : []);
+      });
+      if (response.type !== 'inspect') throw new Error(response.error || 'Error abriendo FCS.');
+      const sample = response.file as FCSFile;
+      onInspect(sample, useTemplate ? {
+        gates: template, populations: [], warnings: result.warnings || [],
+      } : result.analysis || analyzeFCS(sample));
+      setProgress('');
+    } catch (error) {
+      setProgress('Error al abrir: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      worker.terminate();
     }
-    onInspect(sample, result.analysis);
   };
 
   const exportCSV = () => {
-    const headers = ['archivo', 'estado', 'eventos', 'canales', 'compensado', 'T_n', 'B_n', 'T_IgG_mediana', 'B_IgG_mediana', 'advertencias', 'error'];
-    const rows = items.map(r => [
-      r.filename, r.status, r.events, r.channels, r.compensated ? 'sí' : 'no',
-      r.analysis?.tCount, r.analysis?.bCount, r.analysis?.tIggMedian, r.analysis?.bIggMedian,
-      r.analysis?.warnings.join(' | '), r.error,
-    ].map(v => csvCell(v)).join(','));
-    const csv = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const header = ['archivo', 'estado', 'eventos_totales', 'compensado',
+      'gate', 'eventos_gate', 'porcentaje_padre', 'mediana_x', 'mediana_y', 'advertencias', 'error'];
+    const rows = items.flatMap(item => {
+      const gates = item.gateSummaries?.length ? item.gateSummaries : [undefined];
+      return gates.map(gate => [
+        item.filename, item.status, item.events, item.compensated ? 'si' : 'no',
+        gate?.name, gate?.count, gate?.percentOfParent, gate?.medianX, gate?.medianY,
+        item.warnings?.join(' | '), item.error,
+      ].map(v => csvCell(v)).join(','));
+    });
+    const csv = '\uFEFF' + [header.join(','), ...rows].join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'cytoflow_lote_exploratorio.csv'; anchor.click();
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'cytoflow_resultados_lote.csv';
+    link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
@@ -130,6 +164,10 @@ export const BatchAnalysis: React.FC<Props> = ({ onInspect }) => {
             <input type="checkbox" checked={useCompensation} onChange={e => setUseCompensation(e.target.checked)} />
             Aplicar compensación cuando exista $SPILLOVER válido
           </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={useTemplate} onChange={e => setUseTemplate(e.target.checked)} disabled={template.length === 0} />
+            Usar gates del explorador como workflow ({template.length} gates)
+          </label>
           <div className="flex flex-wrap gap-2">
             <button className="rounded bg-blue-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50" disabled={busy || files.length === 0} onClick={() => void run()}>Analizar lote ({files.length})</button>
             <button className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50" disabled={busy} onClick={() => void run(true)}>Probar con 3 FCS simulados</button>
@@ -142,11 +180,11 @@ export const BatchAnalysis: React.FC<Props> = ({ onInspect }) => {
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-100 text-slate-600"><tr>{['Muestra', 'Estado', 'Eventos', 'T (n)', 'B (n)', 'Mediana IgG T', 'Mediana IgG B', 'Acción'].map(h => <th key={h} className="p-3">{h}</th>)}</tr></thead>
               <tbody>{items.map(r => <tr key={r.id} className="border-t border-slate-100">
-                <td className="p-3 font-medium">{r.filename}<div className="text-slate-500">{r.error || r.analysis?.warnings.slice(1).join(' · ')}</div></td>
+                <td className="p-3 font-medium">{r.filename}<div className="text-slate-500">{r.error || r.warnings?.slice(1).join(' · ')}</div></td>
                 <td className="p-3">{r.status === 'ok' ? 'Procesado' : 'Error'}</td>
                 <td className="p-3">{r.events.toLocaleString()}</td>
-                <td className="p-3">{r.analysis?.tCount ?? '—'}</td>
-                <td className="p-3">{r.analysis?.bCount ?? '—'}</td>
+                <td className="p-3">{r.gateSummaries?.find(g => g.id === 'auto_tcells')?.count ?? '—'}</td>
+                <td className="p-3">{r.gateSummaries?.find(g => g.id === 'auto_bcells')?.count ?? '—'}</td>
                 <td className="p-3">{r.analysis?.tIggMedian?.toFixed(1) ?? '—'}</td>
                 <td className="p-3">{r.analysis?.bIggMedian?.toFixed(1) ?? '—'}</td>
                 <td className="p-3"><button disabled={r.status !== 'ok' || busy} className="text-blue-700 underline disabled:opacity-30" onClick={() => void inspect(r)}>Inspeccionar gates</button></td>
